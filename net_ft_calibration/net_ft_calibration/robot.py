@@ -147,7 +147,11 @@ class RobotController:
         if joint_names is None:
             raise RuntimeError("No joint names available; is /joint_states publishing?")
 
-        arm_joints = [n for n in joint_names if not n.startswith('hand_e')]
+        _UR_SUFFIXES = (
+            'shoulder_pan_joint', 'shoulder_lift_joint', 'elbow_joint',
+            'wrist_1_joint', 'wrist_2_joint', 'wrist_3_joint',
+        )
+        arm_joints = [n for n in joint_names if any(n.endswith(s) for s in _UR_SUFFIXES)]
         if len(arm_joints) != len(joint_positions):
             raise ValueError(
                 f"Expected {len(arm_joints)} joint values, got {len(joint_positions)}"

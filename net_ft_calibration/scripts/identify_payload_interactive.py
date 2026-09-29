@@ -171,8 +171,12 @@ class IdentifyPayloadNode(Node):
         state = self.robot.get_state()
         q = state['q']
         names = state['joint_names']
-        arm_joints = [n for n in names if not n.startswith('hand_e')]
-        arm_q = q[:len(arm_joints)]
+        _UR_SUFFIXES = (
+            'shoulder_pan_joint', 'shoulder_lift_joint', 'elbow_joint',
+            'wrist_1_joint', 'wrist_2_joint', 'wrist_3_joint',
+        )
+        arm_indices = [i for i, n in enumerate(names) if any(n.endswith(s) for s in _UR_SUFFIXES)]
+        arm_q = [q[i] for i in arm_indices]
 
         if self.poses_file.exists():
             with open(self.poses_file, 'r') as f:
