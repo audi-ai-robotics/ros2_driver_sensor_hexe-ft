@@ -1,0 +1,20 @@
+# Example payload parameters — overwritten by identify_payload_interactive.py.
+mass: 0.0
+center_of_gravity:
+  x: 0.0
+  y: 0.0
+  z: 0.0
+sensor_bias:
+  fx: 0.0
+  fy: 0.0
+  fz: 0.0
+  tx: 0.0
+  ty: 0.0
+  tz: 0.0
+metadata:
+  num_poses: 0
+  residual_norm: 0.0
+  condition_number: 0.0
+  calibrated_at: ''
+  sensor_frame: ur16e_tool0
+  world_frame: ur16e_base_link
