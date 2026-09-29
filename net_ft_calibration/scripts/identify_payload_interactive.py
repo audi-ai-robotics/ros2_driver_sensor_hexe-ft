@@ -38,7 +38,7 @@ from ament_index_python.packages import get_package_share_directory
 from geometry_msgs.msg import WrenchStamped
 from scipy.spatial.transform import Rotation as R
 
-import tf2_ros
+from tf2_ros import LookupException, ExtrapolationException
 
 from net_ft_calibration import RobotController, identify_payload, save_payload_params
 
@@ -117,9 +117,6 @@ class IdentifyPayloadNode(Node):
             moveit_config_package=moveit_pkg,
         )
 
-        self._tf_buffer = tf2_ros.Buffer()
-        self._tf_listener = tf2_ros.TransformListener(self._tf_buffer, self)
-
         self._wrench_buf = WrenchBuffer(maxlen=500)
         self.create_subscription(WrenchStamped, wrench_topic, self._wrench_cb, 10)
 
@@ -137,12 +134,12 @@ class IdentifyPayloadNode(Node):
 
     def _get_sensor_rotation(self) -> np.ndarray | None:
         try:
-            tf = self._tf_buffer.lookup_transform(
+            tf = self.robot._tf_buffer.lookup_transform(
                 self.sensor_frame, self.world_frame, rclpy.time.Time()
             )
             r = tf.transform.rotation
             return R.from_quat([r.x, r.y, r.z, r.w]).as_matrix()
-        except (tf2_ros.LookupException, tf2_ros.ExtrapolationException) as e:
+        except (LookupException, ExtrapolationException) as e:
             self.get_logger().error(f"TF lookup failed: {e}")
             return None
 
