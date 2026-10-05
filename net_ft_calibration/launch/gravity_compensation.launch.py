@@ -1,7 +1,7 @@
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, GroupAction
 from launch.substitutions import LaunchConfiguration
-from launch_ros.actions import Node, PushROSNamespace
+from launch_ros.actions import Node, PushROSNamespace, SetRemap
 
 
 def generate_launch_description():
@@ -18,6 +18,9 @@ def generate_launch_description():
 
         GroupAction(actions=[
             PushROSNamespace(LaunchConfiguration('ns')),
+            # robot publishes TF under the namespace; keep the listener's /tf in-namespace too
+            SetRemap(src='/tf', dst='tf'),
+            SetRemap(src='/tf_static', dst='tf_static'),
             Node(
                 package='net_ft_calibration',
                 executable='gravity_compensation_node.py',

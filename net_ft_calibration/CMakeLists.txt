@@ -9,6 +9,7 @@ ament_python_install_package(${PROJECT_NAME})
 install(PROGRAMS
   scripts/identify_payload_interactive.py
   scripts/gravity_compensation_node.py
+  scripts/wrench_frame_transform_node.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

@@ -8,7 +8,8 @@
     rdt_sampling_rate
     sensor_type
     internal_filter_rate
-    use_hardware_biasing">
+    use_hardware_biasing
+    sensor_name:=tcp_fts_sensor">
 
     <xacro:macro name="cylinder_inertial" params="radius length mass *origin">
       <inertial>
@@ -79,6 +80,8 @@
       ip_address="${ip_address}"
       rdt_sampling_rate="${rdt_sampling_rate}"
       internal_filter_rate="${internal_filter_rate}"
-      use_hardware_biasing="${use_hardware_biasing}"/>
+      use_hardware_biasing="${use_hardware_biasing}"
+      sensor_name="${sensor_name}"
+      frame_id="${prefix}fts_link"/>
   </xacro:macro>
 </robot>

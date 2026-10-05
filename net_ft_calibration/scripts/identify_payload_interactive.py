@@ -311,30 +311,35 @@ class IdentifyPayloadNode(Node):
                     continue
 
                 cmd = line[0]
-                if cmd == 'c':
-                    self._capture_pose()
-                elif cmd == 's':
-                    self._save_joint_pose()
-                elif cmd == 'a':
-                    self._auto_capture()
-                elif cmd == 'r':
-                    self._run_identification()
-                elif cmd == 'w':
-                    self._save_result()
-                elif cmd == 'h':
-                    self.get_logger().info("Moving to home...")
-                    self.robot.go_home()
-                elif cmd == 'd':
-                    self._captured_wrenches.clear()
-                    self._captured_rotations.clear()
-                    self._result = None
-                    self.get_logger().info("Cleared all captured data")
-                elif cmd == 'q':
-                    break
-                elif cmd == '?':
-                    self._print_help()
-                else:
-                    self.get_logger().info(f"Unknown command: '{cmd}'. Press '?' for help.")
+                self.get_logger().info(f"Received command '{cmd}'")
+                try:
+                    if cmd == 'c':
+                        self._capture_pose()
+                    elif cmd == 's':
+                        self._save_joint_pose()
+                    elif cmd == 'a':
+                        self._auto_capture()
+                    elif cmd == 'r':
+                        self._run_identification()
+                    elif cmd == 'w':
+                        self._save_result()
+                    elif cmd == 'h':
+                        self.get_logger().info("Moving to home...")
+                        self.robot.go_home()
+                    elif cmd == 'd':
+                        self._captured_wrenches.clear()
+                        self._captured_rotations.clear()
+                        self._result = None
+                        self.get_logger().info("Cleared all captured data")
+                    elif cmd == 'q':
+                        break
+                    elif cmd == '?':
+                        self._print_help()
+                    else:
+                        self.get_logger().info(f"Unknown command: '{cmd}'. Press '?' for help.")
+                except Exception as e:
+                    # surfaces otherwise-silent failures (e.g. TF/move_group not reachable)
+                    self.get_logger().error(f"Command '{cmd}' raised an exception: {e}")
 
         except KeyboardInterrupt:
             self.get_logger().info("Interrupted")

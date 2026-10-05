@@ -50,3 +50,8 @@ where:
 - `rdt_sampling_rate`: the sampling rate of the RDT communication, please refer to
   the sensor manuals for the frequency range.
 - `use_hardware_biasing`: whether to use built-in sensor biasing.
+
+### Running in Ingolstadt
+```bash
+ros2 launch net_ft_driver net_ft_broadcaster.launch.py ip_address:=192.168.1.10 rdt_sampling_rate:=250 sensor_type:=onrobot
+```
