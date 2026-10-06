@@ -1,5 +1,13 @@
-# Joint poses for payload identification.
-# Add poses via the 's' key in identify_payload_interactive.py,
-# or manually as lists of 6 joint angles (radians).
-# Use diverse orientations for best results.
-joint_poses: []
+joint_poses:
+- - 1.677995
+  - -1.810955
+  - -2.988798
+  - -2.338439
+  - 4.685197
+  - -4.680038
+- - 1.767492
+  - -1.96612
+  - -2.879294
+  - -1.337543
+  - 4.732425
+  - -4.680135

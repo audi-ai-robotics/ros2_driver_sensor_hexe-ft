@@ -68,6 +68,7 @@ NetFTInterface::NetFTInterface(const std::string& ip_address, int max_sampling_f
   asio::ip::udp::endpoint endpoint(asio::ip::make_address(ip_address), kPort);
   socket_.open(asio::ip::udp::v4());
   socket_.connect(endpoint);
+  socket_.non_blocking(true);
 
   auto cal_config = get_config("netftcalapi.xml");
   force_scale_ = 1.0 / std::stod(parse_config(cal_config, "netftCalibration", "calcpf"));
@@ -93,7 +94,15 @@ bool NetFTInterface::stop_streaming()
 std::unique_ptr<SensorData> NetFTInterface::receive_data()
 {
   uint8_t buffer[kRecordSize + 1];
-  size_t len = socket_.receive(asio::buffer(buffer, kRecordSize + 1));
+  asio::error_code error;
+  size_t len = socket_.receive(asio::buffer(buffer, kRecordSize + 1), 0, error);
+  if (error == asio::error::would_block || error == asio::error::try_again) {
+    return nullptr;
+  }
+  if (error) {
+    std::cerr << "Failed to receive F/T sensor data: " << error.message() << std::endl;
+    return nullptr;
+  }
   if (len != kRecordSize) {
     return nullptr;
   }

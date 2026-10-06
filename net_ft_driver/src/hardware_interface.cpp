@@ -113,12 +113,10 @@ NetFtHardwareInterface::on_activate(const rclcpp_lifecycle::State& /*previous_st
         return hardware_interface::CallbackReturn::ERROR;
       }
     }
-    std::unique_ptr<SensorData> data = driver_->receive_data();
-    if (data) {
-      ft_sensor_measurements_ = data->ft_values;
-      RCLCPP_INFO(kLogger, "Successfully started data streaming!");
-      return hardware_interface::CallbackReturn::SUCCESS;
-    }
+    has_data_time_ = false;
+    has_restart_time_ = false;
+    RCLCPP_INFO(kLogger, "Started data streaming; awaiting the first F/T packet.");
+    return hardware_interface::CallbackReturn::SUCCESS;
   }
   RCLCPP_FATAL(kLogger, "The data stream could not be started!");
   return hardware_interface::CallbackReturn::ERROR;
@@ -135,16 +133,36 @@ NetFtHardwareInterface::on_deactivate(const rclcpp_lifecycle::State& /*previous_
   return hardware_interface::CallbackReturn::ERROR;
 }
 
-hardware_interface::return_type NetFtHardwareInterface::read(const rclcpp::Time& /*time*/,
+hardware_interface::return_type NetFtHardwareInterface::read(const rclcpp::Time& time,
                                                              const rclcpp::Duration& /*period*/)
 {
-  auto data = driver_->receive_data();
-  if (data) {
-    ft_sensor_measurements_ = data->ft_values;
-    lost_packets_ = static_cast<double>(data->lost_packets);
-    packet_count_ = static_cast<double>(data->packet_count);
-    out_of_order_count_ = static_cast<double>(data->out_of_order_count);
-    status_ = static_cast<double>(data->status);
+  std::unique_ptr<SensorData> latest;
+  // Keep only the newest sample when the sensor runs faster than ros2_control.
+  while (auto data = driver_->receive_data()) {
+    latest = std::move(data);
+  }
+
+  if (latest) {
+    ft_sensor_measurements_ = latest->ft_values;
+    lost_packets_ = static_cast<double>(latest->lost_packets);
+    packet_count_ = static_cast<double>(latest->packet_count);
+    out_of_order_count_ = static_cast<double>(latest->out_of_order_count);
+    status_ = static_cast<double>(latest->status);
+    last_data_time_ = time;
+    has_data_time_ = true;
+    return hardware_interface::return_type::OK;
+  }
+
+  const bool stream_stale = !has_data_time_ || (time - last_data_time_).seconds() > 0.5;
+  const bool can_restart = !has_restart_time_ || (time - last_restart_time_).seconds() > 1.0;
+  if (stream_stale && can_restart) {
+    if (driver_->start_streaming()) {
+      RCLCPP_WARN(kLogger, "No F/T packets received; restarted RDT streaming.");
+    } else {
+      RCLCPP_ERROR(kLogger, "No F/T packets received and RDT streaming restart failed.");
+    }
+    last_restart_time_ = time;
+    has_restart_time_ = true;
   }
   return hardware_interface::return_type::OK;
 }

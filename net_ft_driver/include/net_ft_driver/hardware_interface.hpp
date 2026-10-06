@@ -83,6 +83,11 @@ private:
   double lost_packets_;
   double out_of_order_count_;
   double status_;
+
+  rclcpp::Time last_data_time_;
+  rclcpp::Time last_restart_time_;
+  bool has_data_time_ = false;
+  bool has_restart_time_ = false;
 };
 }  // namespace net_ft_driver
 
