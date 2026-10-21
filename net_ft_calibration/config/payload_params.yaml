@@ -1,19 +1,29 @@
-mass: 1.547274
+mass: 1.672506
 center_of_gravity:
-  x: 0.003676
-  y: -0.003216
-  z: 0.040405
+  x: -0.003582
+  y: -0.000969
+  z: 0.059141
 sensor_bias:
-  fx: -3.7331
-  fy: 1.2226
-  fz: -13.0596
-  tx: -0.22076
-  ty: 0.584233
-  tz: 0.221863
+  fx: 1.017
+  fy: -0.4452
+  fz: -10.7045
+  tx: -0.32556
+  ty: 0.646173
+  tz: 0.031818
 metadata:
-  num_poses: 10
-  residual_norm: 19.1534
-  condition_number: 14.08
-  calibrated_at: 2026-10-05 06:21
+  num_poses: 11
+  residual_norm: 2.6451
+  condition_number: 31.92
+  calibrated_at: 2026-10-21 08:11
   sensor_frame: hex_e_fts_link
   world_frame: ur16e_base_link
+robot_payload:
+  mass: 2.78
+  center_of_gravity:
+    x: 0.001
+    y: -0.005
+    z: 0.071
+measuring_offset:
+  x: 0.0
+  y: 0.0
+  z: 0.0445

@@ -1,2 +1,9 @@
 compile_commands.json
 .clangd/
+
+# Python bytecode
+__pycache__/
+*.pyc
+
+# Local verification output (CSV recordings, stray colcon build/install/log)
+verification/logs/

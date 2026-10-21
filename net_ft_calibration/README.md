@@ -27,8 +27,12 @@ ros2 launch ur16e_cell_moveit_config ur_moveit.launch.py  # only for calibration
 ### Step 1: Payload Identification (one-time)
 
 ```bash
-ros2 launch net_ft_calibration identify_payload.launch.py ns:=robot1
+ros2 run net_ft_calibration identify_payload_interactive.py --ros-args \
+  -r __ns:=/robot1 -r /tf:=tf -r /tf_static:=tf_static -p robot_ns:=robot1
 ```
+
+Use `ros2 run`, not `ros2 launch`: launch does not forward keyboard input to the node, so the
+interactive commands below would be ignored.
 
 Interactive commands:
 | Key | Action |

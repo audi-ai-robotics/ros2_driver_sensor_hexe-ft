@@ -9,7 +9,9 @@
     sensor_type
     internal_filter_rate
     use_hardware_biasing
-    sensor_name:=tcp_fts_sensor">
+    sensor_name:=tcp_fts_sensor
+    tool_side_xyz:=''
+    tool_side_rpy:='0 0 0'">
 
     <xacro:macro name="cylinder_inertial" params="radius length mass *origin">
       <inertial>
@@ -69,7 +71,8 @@
     <joint name="${prefix}tool_side_joint" type="fixed">
       <parent link="${prefix}fts_link"/>
       <child link="${prefix}tool_mount_link"/>
-      <origin xyz="0 0 ${sensor_height}" rpy="0 0 0"/>
+      <!-- tool_side_* undo a measurement-frame correction in *origin, so the tool stays put -->
+      <origin xyz="${tool_side_xyz if tool_side_xyz else '0 0 ' + str(sensor_height)}" rpy="${tool_side_rpy}"/>
     </joint>
     <link name="${prefix}tool_mount_link"/>
 
