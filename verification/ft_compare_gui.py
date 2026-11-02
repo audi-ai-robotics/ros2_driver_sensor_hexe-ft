@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """
-Live comparison of the calibrated HEX-E wrench against the UR built-in F/T sensor, both in tool0.
+Live comparison of the raw HEX-E wrench against the wrench the UR controller sees, both in tool0.
 
-Top row: HEX-E (gravity-compensated, transformed to tool0). Bottom row: UR built-in sensor.
+Top row: raw HEX-E (hex_e_ft_broadcaster/wrench, transformed to tool0).
+Bottom row: force_torque_sensor_broadcaster/wrench = HEX-E compensated by the UR controller when RTDE is active
+(ft_force_mode_via_rtde:=true), otherwise the UR built-in sensor.
+For the ROS-side compensated HEX-E instead of the raw one: -p hexe_topic:=ft_compensated_tool0
 Columns: Fx Fy Fz Tx Ty Tz. Each column shares its y-axis between the rows.
 The Record button writes every received sample (long format: time_s, sensor, fx..tz) to a CSV in log_dir.
 
@@ -29,7 +32,7 @@ from rclpy.node import Node
 from scipy.spatial.transform import Rotation as R
 
 LABELS = ['Fx [N]', 'Fy [N]', 'Fz [N]', 'Tx [Nm]', 'Ty [Nm]', 'Tz [Nm]']
-ROW_NAMES = ['HEX-E (compensated)', 'UR built-in']
+ROW_NAMES = ['HEX-E', 'UR controller']
 COLORS = ['tab:blue', 'tab:red']
 SENSOR_NAMES = ['hexe', 'ur']
 
@@ -38,7 +41,7 @@ class WrenchCollector(Node):
     def __init__(self):
         super().__init__('ft_compare_gui')
         self.declare_parameter('ns', '')
-        self.declare_parameter('hexe_topic', 'ft_compensated_tool0')
+        self.declare_parameter('hexe_topic', 'hex_e_ft_broadcaster/wrench')
         self.declare_parameter('ur_topic', 'force_torque_sensor_broadcaster/wrench')
         self.declare_parameter('tool_frame', 'ur16e_tool0')
         # Use if the UR driver labels its wrench with a frame that does not match the data.
@@ -68,6 +71,7 @@ class WrenchCollector(Node):
         self.create_subscription(
             WrenchStamped, ur_topic, lambda m: self._cb(1, m, self.ur_frame_override), 50
         )
+        self.topics = [hexe_topic, ur_topic]
         self.get_logger().info(f'HEX-E: {hexe_topic} | UR: {ur_topic} | tool frame: {self.tool_frame}')
 
     def _to_tool_frame(self, msg, frame_override):
@@ -157,7 +161,7 @@ def main():
                 ax.set_title(LABELS[c])
             else:
                 ax.set_xlabel('t [s]')
-        axes[r, 0].set_ylabel(ROW_NAMES[r])
+        axes[r, 0].set_ylabel(f'{ROW_NAMES[r]}\n{node.topics[r]}', fontsize=7)
 
     state = {'paused': False}
     btn_pause = Button(fig.add_axes([0.06, 0.03, 0.08, 0.05]), 'Pause')

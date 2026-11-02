@@ -39,7 +39,7 @@ Interactive commands:
 |-----|--------|
 | `c` | Capture current pose (ensure robot is stationary, no external contact) |
 | `s` | Save current joint pose to `joint_poses.yaml` for reuse |
-| `a` | Auto-capture all saved joint poses |
+| `a` | Auto-capture all saved joint poses (`a rev` = reverse order, for hysteresis checks) |
 | `r` | Run identification (least-squares solve) |
 | `w` | Save results to `payload_params.yaml` |
 | `h` | Move to home |
@@ -48,12 +48,20 @@ Interactive commands:
 
 Capture at least 6 poses with diverse tool orientations (see Tips below).
 
+Each session writes to `verification/logs/<timestamp>_<run_label>/` in this repo (gitignored;
+override with `-p output_dir:=...`, label with `-p run_label:=gripper`): `captures.npz` (raw
+captures, updated after every capture) and `payload_params.yaml` (on `w`). Compare runs offline:
+
+```bash
+python3 verification/compare_calibrations.py verification/logs/*_bare verification/logs/*_gripper --plot
+```
+
 ### Step 2: Gravity Compensation (runtime)
 
 ```bash
 ros2 launch net_ft_calibration gravity_compensation.launch.py \
     ns:=robot1 \
-    payload_params_file:=/tmp/ft_calibration/payload_params.yaml
+    payload_params_file:=<repo>/verification/logs/<run>/payload_params.yaml
 ```
 
 This publishes compensated wrench on `/{ns}/ft_compensated`.
@@ -82,12 +90,14 @@ Ensure the robot is stationary and no external forces are applied when taring.
    - Mass should match the known gripper weight (~1-3 kg for Schunk EGU)
    - CoG Z should be positive (below the sensor, toward the tool)
    - Condition number < 50 indicates good pose diversity
-   - Residual norm < 2 N indicates a good fit
+   - Judge the fit by the per-pose force RMS (N), not the residual norm: the latter mixes N and Nm
+     and grows with the number of poses
+   - If first and last pose are the same, the drift between them is logged (thermal drift check)
 5. **Save**: press `w` to save the YAML file
 6. **Install**: copy the params file to the package config for permanent use:
 
 ```bash
-cp /tmp/ft_calibration/payload_params.yaml \
+cp <ws>/src/ros2_driver_sensor_hexe-ft/verification/logs/<run>/payload_params.yaml \
    <ws>/src/ros2_driver_sensor_hexe-ft/net_ft_calibration/config/
 colcon build --packages-select net_ft_calibration
 ```
@@ -149,6 +159,40 @@ metadata:
 | `velocity_scaling` | `0.1` | MoveIt velocity scaling |
 | `capture_samples` | `100` | Samples to average per capture |
 | `settle_time` | `1.5` | Wait time after motion before capture (s) |
+
+### Payload profiles (grasped parts)
+
+Optional `robot_payload` / `measuring_offset` blocks are used for the RTDE path. A `profiles`
+block holds further calibrations, e.g. the gripper with a grasped part. The top level is the
+profile `default`. A profile overrides top-level keys and inherits the rest. Its `robot_payload`
+is derived as the default profile's sensor-side part plus the profile's payload, so the
+`ft_rtde_input_enable` parameters (set once at launch from `default`) stay valid:
+
+```yaml
+profiles:
+  ecu:
+    mass: 1.920771
+    center_of_gravity: {x: -0.001308, y: -0.005615, z: 0.060657}
+    sensor_bias: {fx: 2.2791, fy: -0.4311, fz: -10.5865, tx: -0.255993, ty: 0.701065, tz: 0.0898}
+```
+
+To add one, calibrate with the part grasped, then copy `mass`, `center_of_gravity`,
+`sensor_bias` and `metadata` from the run's `payload_params.yaml` into a new profile. Don't copy
+its `robot_payload`. Alternatively, call `save_payload_params(..., profile='name')` on the
+config file.
+
+Switch at runtime (only while force_mode is inactive). This sets the robot payload
+(`io_and_status_controller/set_payload`) and the `external_ft_rtde_streamer` `sensor_bias`:
+
+```bash
+ros2 run net_ft_calibration set_payload_profile.py --list
+ros2 run net_ft_calibration set_payload_profile.py ecu --ros-args -p robot_ns:=Peach
+ros2 run net_ft_calibration set_payload_profile.py default --ros-args -p robot_ns:=Peach
+```
+
+The pglfd executor does the same with `-p ft_profile:=ecu`. The robot starts with `default` (the
+pendant payload). A profile stays active until it is switched again; check on the pendant
+whether a program restart resets it to the installation payload.
 
 ## Gripper State Changes
 

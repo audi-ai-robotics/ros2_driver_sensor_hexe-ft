@@ -15,10 +15,14 @@ Usage:
 Keys:
   c   Capture current pose (manual)
   s   Save current joint pose to joint_poses.yaml for reuse
-  a   Auto-capture all saved joint poses
+  a   Auto-capture all saved joint poses ('a rev' = in reverse order, for hysteresis checks)
   r   Run payload identification (least-squares solve)
   o   Measuring-offset push test (external sensor vs. UR built-in sensor)
   w   Save results to payload_params.yaml
+
+Each session writes to <output_dir>/<timestamp>_<run_label>/ (default output_dir: the repo's
+verification/logs). Raw captures are saved to captures.npz after every capture, so a run can be
+re-analyzed offline (verification/compare_calibrations.py) even without pressing 'w'.
 
 Measuring-offset test (o): run the driver with ft_force_mode_via_rtde:=false so
 ur_wrench_topic is the UR built-in sensor, set the pendant TCP to the flange, and keep
@@ -33,6 +37,7 @@ import select
 import threading
 import time
 from collections import deque
+from datetime import datetime
 from pathlib import Path
 
 import numpy as np
@@ -52,8 +57,15 @@ from net_ft_calibration import (
     estimate_measuring_offset,
     identify_payload,
     load_payload_params,
+    pose_drift,
+    save_captures,
     save_payload_params,
     split_payload,
+)
+
+_UR_SUFFIXES = (
+    'shoulder_pan_joint', 'shoulder_lift_joint', 'elbow_joint',
+    'wrist_1_joint', 'wrist_2_joint', 'wrist_3_joint',
 )
 
 
@@ -102,6 +114,9 @@ class IdentifyPayloadNode(Node):
         self.declare_parameter('moveit_config_package', 'ur16e_cell_moveit_config')
         self.declare_parameter('joint_poses_file', '')
         self.declare_parameter('output_file', '')
+        # Empty = the repo's verification/logs (path recorded at build time in config/log_dir.txt)
+        self.declare_parameter('output_dir', '')
+        self.declare_parameter('run_label', 'run')
         self.declare_parameter('capture_samples', 100)
         self.declare_parameter('settle_time', 1.5)
         # UR built-in wrench, only used by the measuring-offset test.
@@ -141,10 +156,18 @@ class IdentifyPayloadNode(Node):
             poses_file = str(Path(pkg_share) / 'config' / 'joint_poses.yaml')
         self.poses_file = Path(poses_file)
 
+        output_dir = self.get_parameter('output_dir').value
+        if not output_dir:
+            log_dir_file = Path(pkg_share) / 'config' / 'log_dir.txt'
+            if not log_dir_file.exists():
+                raise RuntimeError(f"{log_dir_file} missing (rebuild the package) and no output_dir given")
+            output_dir = log_dir_file.read_text().strip()
+        self.run_label = self.get_parameter('run_label').value
+        self.run_dir = Path(output_dir) / f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{self.run_label}"
+        self.captures_file = self.run_dir / 'captures.npz'
         output_file = self.get_parameter('output_file').value
-        if not output_file:
-            output_file = '/tmp/ft_calibration/payload_params.yaml'
-        self.output_file = Path(output_file)
+        self.output_file = Path(output_file) if output_file else self.run_dir / 'payload_params.yaml'
+        self.get_logger().info(f"Run directory: {self.run_dir}")
 
         self.robot = RobotController(
             self, base_frame, ee_frame,
@@ -165,6 +188,10 @@ class IdentifyPayloadNode(Node):
 
         self._captured_wrenches = []
         self._captured_rotations = []
+        self._captured_stds = []
+        self._captured_joints = []
+        self._captured_passes = []
+        self._pass = 0
         self._result = None
         self._stop = False
 
@@ -265,6 +292,10 @@ class IdentifyPayloadNode(Node):
 
         self._captured_wrenches.append(wrench_avg)
         self._captured_rotations.append(R_sw)
+        self._captured_stds.append(wrench_std)
+        self._captured_joints.append(self._arm_joint_positions())
+        self._captured_passes.append(self._pass)
+        self._save_captures()
 
         n = len(self._captured_wrenches)
         self.get_logger().info(
@@ -278,16 +309,23 @@ class IdentifyPayloadNode(Node):
                 "Force std > 0.5 N while standing still: something (cable?) is moving the tool")
         return True
 
-    def _save_joint_pose(self):
+    def _save_captures(self):
+        save_captures(
+            self.captures_file,
+            self._captured_wrenches, self._captured_stds, self._captured_rotations,
+            self._captured_joints, self._captured_passes,
+            label=self.run_label, sensor_frame=self.sensor_frame, world_frame=self.world_frame,
+        )
+
+    def _arm_joint_positions(self) -> list[float]:
+        """Arm joint positions in joint_states order (same as joint_poses.yaml)."""
         state = self.robot.get_state()
         q = state['q']
         names = state['joint_names']
-        _UR_SUFFIXES = (
-            'shoulder_pan_joint', 'shoulder_lift_joint', 'elbow_joint',
-            'wrist_1_joint', 'wrist_2_joint', 'wrist_3_joint',
-        )
-        arm_indices = [i for i, n in enumerate(names) if any(n.endswith(s) for s in _UR_SUFFIXES)]
-        arm_q = [q[i] for i in arm_indices]
+        return [q[i] for i, n in enumerate(names) if any(n.endswith(s) for s in _UR_SUFFIXES)]
+
+    def _save_joint_pose(self):
+        arm_q = self._arm_joint_positions()
 
         if self.poses_file.exists():
             with open(self.poses_file, 'r') as f:
@@ -305,7 +343,7 @@ class IdentifyPayloadNode(Node):
 
         self.get_logger().info(f"Saved joint pose #{len(poses)} to {self.poses_file}")
 
-    def _auto_capture(self):
+    def _auto_capture(self, reverse: bool = False):
         if not self.poses_file.exists():
             self.get_logger().error(f"No joint poses file: {self.poses_file}")
             return
@@ -316,8 +354,14 @@ class IdentifyPayloadNode(Node):
         if len(joint_poses) < 2:
             self.get_logger().error(f"Need at least 2 poses, got {len(joint_poses)}")
             return
+        if reverse:
+            joint_poses = joint_poses[::-1]
 
-        self.get_logger().info(f"Auto-capturing {len(joint_poses)} poses...")
+        # each auto-capture is its own pass, so passes can be compared offline (hysteresis)
+        self._pass += 1
+        self.get_logger().info(
+            f"Auto-capturing {len(joint_poses)} poses{' in reverse order' if reverse else ''} "
+            f"(pass {self._pass})...")
         for i, pose in enumerate(joint_poses):
             self.get_logger().info(f"--- Pose {i + 1}/{len(joint_poses)} ---")
             try:
@@ -356,13 +400,26 @@ class IdentifyPayloadNode(Node):
         self.get_logger().info(
             f"  Torque bias:      [{bias[3]:.5f}, {bias[4]:.5f}, {bias[5]:.5f}] Nm"
         )
-        self.get_logger().info(f"  Residual norm:    {self._result['residual_norm']:.4f}")
+        self.get_logger().info(f"  Residual norm:    {self._result['residual_norm']:.4f} (N and Nm mixed, grows with poses)")
+        self.get_logger().info(
+            f"  Force RMS:        {self._result['force_rms']:.3f} N   "
+            f"Torque RMS: {self._result['torque_rms']:.4f} Nm  (per pose)")
+        ax = self._result['axis_rms']
+        self.get_logger().info(
+            f"  Axis RMS:         F=[{ax[0]:.3f}, {ax[1]:.3f}, {ax[2]:.3f}] N  "
+            f"T=[{ax[3]:.4f}, {ax[4]:.4f}, {ax[5]:.4f}] Nm")
         self.get_logger().info(f"  Condition number: {self._result['condition_number']:.1f}")
         self.get_logger().info(f"  Poses used:       {n}")
         self.get_logger().info("  Per-pose residuals (|F| N, |T| Nm):")
         for i, (rf, rt) in enumerate(zip(self._result['pose_force_residuals'],
                                          self._result['pose_torque_residuals'])):
             self.get_logger().info(f"    pose {i + 1:2d}: {rf:6.3f}  {rt:7.4f}")
+        drift = pose_drift(wrenches, self._captured_joints)
+        if drift is not None:
+            self.get_logger().info(
+                f"  Drift first->last capture (same pose): F=[{drift[0]:.3f}, {drift[1]:.3f}, "
+                f"{drift[2]:.3f}] N (|F|={np.linalg.norm(drift[:3]):.3f})  "
+                f"T=[{drift[3]:.4f}, {drift[4]:.4f}, {drift[5]:.4f}] Nm")
         self._log_rtde_params()
 
         if self._result['condition_number'] > 50:
@@ -467,7 +524,7 @@ class IdentifyPayloadNode(Node):
         self.get_logger().info("--- Commands ---")
         self.get_logger().info("  c  Capture current pose")
         self.get_logger().info("  s  Save current joint pose to file")
-        self.get_logger().info("  a  Auto-capture all saved joint poses")
+        self.get_logger().info("  a  Auto-capture all saved joint poses ('a rev' = reverse order)")
         self.get_logger().info("  r  Run identification")
         self.get_logger().info("  o  Measuring-offset push test")
         self.get_logger().info("  w  Save results")
@@ -517,7 +574,7 @@ class IdentifyPayloadNode(Node):
                     elif cmd == 's':
                         self._save_joint_pose()
                     elif cmd == 'a':
-                        self._auto_capture()
+                        self._auto_capture(reverse='rev' in line.split()[1:])
                     elif cmd == 'r':
                         self._run_identification()
                     elif cmd == 'o':
@@ -530,6 +587,10 @@ class IdentifyPayloadNode(Node):
                     elif cmd == 'd':
                         self._captured_wrenches.clear()
                         self._captured_rotations.clear()
+                        self._captured_stds.clear()
+                        self._captured_joints.clear()
+                        self._captured_passes.clear()
+                        self._pass = 0
                         self._result = None
                         self.get_logger().info("Cleared all captured data")
                     elif cmd == 'q':
