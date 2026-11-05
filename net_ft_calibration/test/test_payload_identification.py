@@ -17,6 +17,7 @@ from net_ft_calibration.payload_identification import (
     save_captures,
     save_payload_params,
     split_payload,
+    transform_wrench,
 )
 
 
@@ -266,3 +267,22 @@ def test_profile_robot_payload_keeps_sensor_side_part(tmp_path):
 def test_unknown_profile_raises(tmp_path):
     with pytest.raises(KeyError, match='ecu'):
         load_payload_params(_profile_file(tmp_path), 'nope')
+
+
+def test_transform_wrench_identity_shifts_torque_to_tcp():
+    # 10 N along x measured at the HEX-E measuring point, 37.5 mm above the flange/TCP
+    w = transform_wrench([10.0, 0.0, 0.0, 0.0, 0.0, 0.0], np.eye(3), [0.0, 0.0, 0.0375])
+    np.testing.assert_allclose(w, [10.0, 0.0, 0.0, 0.0, 0.375, 0.0], atol=1e-12)
+
+
+def test_transform_wrench_matches_rigid_body_moment():
+    rng = np.random.default_rng(7)
+    R_oi = R.random(random_state=7).as_matrix()
+    f_in, lever = rng.normal(size=3), rng.normal(size=3) * 0.05
+    # a pure force applied at the input reference point has zero torque there
+    w = transform_wrench(np.r_[f_in, 0.0, 0.0, 0.0], R_oi, lever)
+    np.testing.assert_allclose(w[:3], R_oi @ f_in)
+    np.testing.assert_allclose(w[3:], np.cross(lever, R_oi @ f_in))
+    # moving back with the inverse rotation and the opposite lever recovers the input
+    back = transform_wrench(w, R_oi.T, -R_oi.T @ lever)
+    np.testing.assert_allclose(back, np.r_[f_in, 0.0, 0.0, 0.0], atol=1e-12)

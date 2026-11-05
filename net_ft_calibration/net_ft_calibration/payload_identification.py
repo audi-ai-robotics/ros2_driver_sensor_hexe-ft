@@ -210,6 +210,25 @@ def compute_gravity_wrench(
     return np.concatenate([f_gravity, t_gravity])
 
 
+def transform_wrench(
+    wrench: np.ndarray,
+    R_out_in: np.ndarray,
+    lever: np.ndarray = np.zeros(3),
+) -> np.ndarray:
+    """
+    Express a wrench in another frame and move its torque reference point.
+
+    f_out = R f_in, t_out = R t_in + lever x f_out, where lever is the point the input torques
+    are taken about (e.g. the sensor measuring point) relative to the new reference point (e.g.
+    the TCP), in output-frame coordinates. Same convention as UR's ft_rtde_input_enable, which
+    shifts the external wrench from sensor_measuring_offset to the TCP.
+    """
+    w = np.asarray(wrench, dtype=float)
+    f = R_out_in @ w[:3]
+    t = R_out_in @ w[3:] + np.cross(np.asarray(lever, dtype=float), f)
+    return np.concatenate([f, t])
+
+
 def _skew(v: np.ndarray) -> np.ndarray:
     return np.array([
         [0.0, -v[2], v[1]],

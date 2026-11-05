@@ -15,6 +15,11 @@ def generate_launch_description():
         DeclareLaunchArgument('wrench_topic',
                               default_value='force_torque_sensor_broadcaster/wrench'),
         DeclareLaunchArgument('compensated_topic', default_value='ft_compensated'),
+        DeclareLaunchArgument('payload_profile', default_value='',
+                              description="Payload profile from payload_params.yaml ('' = default)"),
+        DeclareLaunchArgument('output_frame', default_value='',
+                              description="Rotate into this frame and move torques to the TCP "
+                                          "('' = keep the sensor frame)"),
 
         GroupAction(actions=[
             PushROSNamespace(LaunchConfiguration('ns')),
@@ -32,6 +37,8 @@ def generate_launch_description():
                     'world_frame': LaunchConfiguration('world_frame'),
                     'wrench_topic': LaunchConfiguration('wrench_topic'),
                     'compensated_topic': LaunchConfiguration('compensated_topic'),
+                    'payload_profile': LaunchConfiguration('payload_profile'),
+                    'output_frame': LaunchConfiguration('output_frame'),
                 }],
             ),
         ]),

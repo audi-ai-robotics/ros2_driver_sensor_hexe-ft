@@ -66,6 +66,12 @@ ros2 launch net_ft_calibration gravity_compensation.launch.py \
 
 This publishes compensated wrench on `/{ns}/ft_compensated`.
 
+With `use_ft_sensor:=true`, `ur16e_cell_control/start_robot.launch.py` already starts this node for
+the HEX-E as `hex_e_compensation` (input `hex_e_ft_broadcaster/wrench`, output
+`/{ns}/hex_e_compensated/wrench` in `ur16e_tool0`, torques moved from the measuring point to the
+TCP). It runs in both RTDE modes and is what `sync_node` records. `PayloadProfileSwitcher` sets
+its `payload_profile` and `zero_wrench()` calls its `~/tare`. It is not in any control loop.
+
 ### Step 3: Tare (as needed)
 
 After changing gripper state (open/close) or to correct drift:
@@ -145,7 +151,12 @@ metadata:
 | `world_frame` | `ur16e_base_link` | Gravity reference frame (Z-up) |
 | `wrench_topic` | `force_torque_sensor_broadcaster/wrench` | Input topic (relative) |
 | `compensated_topic` | `ft_compensated` | Output topic (relative) |
-| `tare_samples` | `100` | Samples to average for tare |
+| `payload_profile` | `''` | Profile from payload_params.yaml (`''` = default); settable at runtime, resets the tare |
+| `output_frame` | `''` | If set: rotate into this frame and move torques from `measuring_offset` to `tcp_offset` |
+| `tcp_offset` | `[0, 0, 0]` | TCP in `output_frame` (torque reference point) |
+| `tare_samples` | `100` | Samples averaged by `~/tare` (the last N outputs; the call is synchronous) |
+| `max_sample_age` | `0.5` | `~/tare` fails if the last sample is older (s) |
+| `frozen_samples` | `50` | Stop publishing after this many bit-identical inputs (frozen UDP stream); 0 = off |
 | `gravity` | `9.81` | Gravitational acceleration (m/s^2) |
 
 ### Identification Script

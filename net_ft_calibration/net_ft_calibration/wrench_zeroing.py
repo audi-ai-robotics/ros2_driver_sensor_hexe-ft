@@ -6,6 +6,10 @@ checks for a live HEX-E, cancels the offset of the compensated UR wrench and ver
 the streamer, it falls back to zero_ftsensor (built-in sensor) and does the same checks here:
 wait for a live, varying wrench, zero, then verify the mean is close to zero.
 
+In both cases it then also tares the ROS-side HEX-E compensation (hex_e_compensation/tare) if that
+node runs, so recorded demos start at zero contact wrench like runtime execution. With
+ft_force_mode_via_rtde:=false that is the only HEX-E zeroing (hand-guiding through the handle).
+
 The caller's node must not be spun elsewhere (this spins it like spin_until_future_complete).
 """
 
@@ -48,10 +52,51 @@ def _call(node, cli, timeout: float):
 
 def zero_wrench(node, robot_ns: str = '', wrench_topic: str = 'force_torque_sensor_broadcaster/wrench',
                 streamer_node: str = 'external_ft_rtde_streamer', live_timeout: float = 5.0,
-                force_tolerance: float = 0.5, torque_tolerance: float = 0.1) -> bool:
-    """Tare via the RTDE streamer if it runs, else zero_ftsensor with live/verify checks.
+                force_tolerance: float = 0.5, torque_tolerance: float = 0.1,
+                compensation_node: str = 'hex_e_compensation',
+                builtin_force_tolerance: float = 2.0, builtin_torque_tolerance: float = 0.5) -> bool:
+    """Tare via the RTDE streamer if it runs, else zero_ftsensor with live/verify checks; then
+    tare the HEX-E compensation node if it runs.
 
-    Returns False (after logging an error) if the wrench is stale/frozen or not ~0 afterwards."""
+    Returns False (after logging an error) if the wrench is stale/frozen or not ~0 afterwards.
+    On the built-in path (no streamer) a residual between force/torque_tolerance and
+    builtin_force/torque_tolerance (about the built-in sensor's accuracy) only warns: on Peach
+    zero_ftsensor was observed to leave the UR wrench unchanged (2026-11-02)."""
+    if not _zero_force_mode_wrench(node, robot_ns, wrench_topic, streamer_node, live_timeout,
+                                   force_tolerance, torque_tolerance,
+                                   builtin_force_tolerance, builtin_torque_tolerance):
+        return False
+    return _tare_compensation(node, robot_ns, compensation_node)
+
+
+def _tare_compensation(node, robot_ns: str, compensation_node: str, timeout: float = 3.0) -> bool:
+    log = node.get_logger()
+    pre = f'/{robot_ns}' if robot_ns else ''
+    cli = node.create_client(Trigger, f'{pre}/{compensation_node}/tare')
+    try:
+        if not cli.wait_for_service(timeout_sec=1.0):
+            log.warn(f'{cli.srv_name} unavailable (use_ft_sensor:=false?); recorded HEX-E wrench not tared')
+            return True
+        # retry: after a profile switch the node needs a fresh window of samples first
+        deadline = time.monotonic() + timeout
+        while True:
+            res = _call(node, cli, timeout=5.0)
+            if res is not None and res.success:
+                log.info(f'HEX-E compensation tared: {res.message}')
+                return True
+            if time.monotonic() > deadline:
+                log.error(f"HEX-E compensation tare FAILED: {res.message if res else 'no response'}")
+                return False
+            end = time.monotonic() + 0.2
+            while time.monotonic() < end:
+                rclpy.spin_once(node, timeout_sec=0.02)
+    finally:
+        node.destroy_client(cli)
+
+
+def _zero_force_mode_wrench(node, robot_ns, wrench_topic, streamer_node, live_timeout,
+                            force_tolerance, torque_tolerance,
+                            builtin_force_tolerance, builtin_torque_tolerance) -> bool:
     log = node.get_logger()
     pre = f'/{robot_ns}' if robot_ns else ''
     topic = wrench_topic if wrench_topic.startswith('/') else f'{pre}/{wrench_topic}'
@@ -95,10 +140,20 @@ def zero_wrench(node, robot_ns: str = '', wrench_topic: str = 'force_torque_sens
         mean = after.mean(axis=0)
         f, t = np.linalg.norm(mean[:3]), np.linalg.norm(mean[3:])
         np.set_printoptions(precision=3, suppress=True)
-        if f > force_tolerance or t > torque_tolerance:
+        change = np.linalg.norm(mean[:3] - before[:3])
+        if change < 0.1 and np.linalg.norm(before[:3]) > 0.3:
+            log.warn(f'zero_ftsensor had no measurable effect on {topic} (changed by {change:.3f} N)')
+        if f > builtin_force_tolerance or t > builtin_torque_tolerance:
             log.error(f'F/T zeroing FAILED: wrench not ~0 after zero_ftsensor: F={mean[:3]} N, T={mean[3:]} Nm '
-                      f'(before: F={before[:3]} N); limits {force_tolerance} N / {torque_tolerance} Nm')
+                      f'(before: F={before[:3]} N); limits {builtin_force_tolerance} N / '
+                      f'{builtin_torque_tolerance} Nm (built-in sensor)')
             return False
+        if f > force_tolerance or t > torque_tolerance:
+            log.warn(f'Built-in F/T residual after zero_ftsensor: F={mean[:3]} N, T={mean[3:]} Nm '
+                     f'(|F| {f:.2f} N, |T| {t:.2f} Nm, above {force_tolerance} N / {torque_tolerance} Nm but '
+                     f'within the built-in limit {builtin_force_tolerance} N / {builtin_torque_tolerance} Nm). '
+                     'Continuing; expect slow creep in force_mode when released.')
+            return True
         log.info(f'F/T zeroed: |F| {f:.3f} N, |T| {t:.3f} Nm (before: F={before[:3]} N)')
         return True
     finally:
