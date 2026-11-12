@@ -1,22 +1,22 @@
-mass: 1.599199
+mass: 1.735767
 center_of_gravity:
-  x: -0.002141
-  y: -0.005366
-  z: 0.055578
+  x: -0.000378
+  y: -0.006758
+  z: 0.049349
 sensor_bias:
-  fx: -2.5119
-  fy: -0.9534
-  fz: -6.901
-  tx: -0.217346
-  ty: 0.651733
-  tz: 0.040909
+  fx: -2.2609
+  fy: -0.9371
+  fz: -7.2699
+  tx: -0.329838
+  ty: 0.534846
+  tz: 0.126532
 metadata:
   num_poses: 8
-  residual_norm: 4.2013
-  condition_number: 36.0
-  force_rms: 1.4841
-  torque_rms: 0.0616
-  calibrated_at: 2026-11-03 13:45
+  residual_norm: 3.0537
+  condition_number: 35.99
+  force_rms: 1.0789
+  torque_rms: 0.0406
+  calibrated_at: 2026-11-10 07:40
   sensor_frame: hex_e_fts_link
   world_frame: ur16e_base_link
 robot_payload:
@@ -35,24 +35,34 @@ measuring_offset:
 # sensor-side part plus the profile's payload, so ft_rtde_input_enable stays valid.
 profiles:
   ecu:
-    mass: 1.712957
+    mass: 1.838923
     center_of_gravity:
-      x: -0.002579
-      y: -0.0057
-      z: 0.058947
+      x: -0.000149
+      y: -0.006604
+      z: 0.054292
     sensor_bias:
-      fx: -3.0555
-      fy: -1.1343
-      fz: -6.5664
-      tx: -0.214596
-      ty: 0.615651
-      tz: 0.038556
+      fx: -1.6705
+      fy: -1.0196
+      fz: -6.7243
+      tx: -0.334985
+      ty: 0.562289
+      tz: 0.137435
     metadata:
       num_poses: 8
-      residual_norm: 4.1479
+      residual_norm: 2.8743
       condition_number: 36.0
-      force_rms: 1.4652
-      torque_rms: 0.0616
-      calibrated_at: 2026-11-03 13:52
+      force_rms: 1.0153
+      torque_rms: 0.0432
+      calibrated_at: 2026-11-10 07:47
       sensor_frame: hex_e_fts_link
       world_frame: ur16e_base_link
+    robot_payload:
+      mass: 3.11
+      center_of_gravity:
+        x: 0.017
+        y: -0.007
+        z: 0.067
+    measuring_offset:
+      x: 0.0
+      y: 0.0
+      z: 0.0375
